@@ -1,0 +1,159 @@
+alias physicalSP S0;
+alias sysCallNo S1;
+alias filename S2;
+alias counter S3;
+alias fatct S4;
+alias counterBasic S5;
+alias basicBlock S6;
+alias i S7;
+alias validPage S8;
+alias dataCounter S9;
+alias freeMem S10;
+alias currentPID S11;
+alias currentPCB S12;
+alias indexSwop S13;
+alias diff S14;
+
+physicalSP = ([PTBR + 2 * (SP / 512)] * 512) + (SP % 512);
+
+sysCallNo = [physicalSP - 1];
+
+filename = [physicalSP-3];//argument is fetched in register
+
+
+if(sysCallNo==9) then
+print "B1";
+	fatct = 0;
+	while(fatct!=64)do
+		if([FAT + (8*fatct)]==filename)then
+			break;
+		else
+			fatct = fatct + 1;
+		endif;
+	endwhile;
+	if(fatct==64)then
+		[physicalSP-2]=-1;
+		ireturn;
+	endif;		
+	basicBlock = [FAT+(8*fatct)+2];	
+	load(1,basicBlock);
+	i = 0;
+	dataCounter = 0;
+print "B2";
+	while(i<256)do
+		if([512+i]!=-1 && [512+i]!="")then
+			dataCounter = dataCounter + 1;
+		endif;		
+		i=i+1;
+	endwhile;
+	if(dataCounter>3)then
+		[physicalSP-2]=-1;
+		ireturn;
+	endif;		
+validPage=0;
+counter = 0;
+while(counter<3)do
+	if([PTBR + (2*counter)+1]==01||[PTBR + (2*counter)+1]==11)then
+		validPage=validPage+1;
+	endif;
+	counter=counter+1;
+endwhile;
+print "B3";
+if(validPage>dataCounter)then
+	counter = 2;
+	diff=validPage-dataCounter;
+			while(diff>0) do
+				while(counter>=0 && ([PTBR+2*counter+1]=="00" || [PTBR+2*counter+1]=="10")) do
+					counter=counter-1;
+				endwhile;
+				[MEM_LIST+[PTBR+2*counter]]=0;
+				[PTBR+2*counter]=-1;
+				[PTBR+2*counter+1]="00";
+				counter=counter-1;
+				diff=diff-1;
+			endwhile;	
+else
+print "B4";	
+	if(validPage<dataCounter)then
+		diff = dataCounter - validPage;
+		counter = 0;
+		freeMem = 0;
+		while(counter<64)do
+			if([MEM_LIST + counter]==0)then
+				freeMem = freeMem+1;
+			endif;
+			counter = counter + 1;
+		endwhile;
+
+	if(freeMem<diff)then
+		[physicalSP-2]=-1;
+		ireturn;
+	endif;		
+	counter=0;
+	i = 2;
+			while(diff>0) do
+				while(counter<64 && [MEM_LIST+counter]==1) do
+					counter=counter+1;	
+				endwhile;
+		
+				[MEM_LIST+counter]=1;
+				while(i>=0 && ([PTBR+2*i+1]!=00 || [PTBR+2*i+1]!=10 )) do
+					i=i-1;
+				endwhile;	
+				[PTBR+2*i]=counter;
+				[PTBR+2*i+1]="01";
+				
+				i=i-1;
+				diff=diff-1;
+				counter=counter+1;				
+			endwhile;
+	endif;
+endif;	
+print "B5";
+		counter=0;
+		i=0;
+		
+		load(1,basicBlock);		
+		while(counter<dataCounter) do
+			while(i<3 && ([PTBR+i*2+1]==00 || [PTBR+2*i+1]==10)) do
+				i=i+1;
+			endwhile;
+			load([PTBR+i*2],[512+counter]);
+			
+			counter=counter+1;
+			i=i+1;
+		endwhile;	
+
+currentPID = (PTBR - 1024) / 8;
+currentPCB = READY_LIST + (32 * currentPID);
+
+
+counter = 0;
+indexSwop = 0;
+print "B6";
+while(counter<8)do
+	if([currentPCB + 15 + (2* counter) + 0]==-1)then
+		[currentPCB + 15 + (2* counter) + 1] = -1;
+		counter = counter + 1;
+	else
+		indexSwop = [currentPCB + (15 + 2* counter)+0];
+		[FILE_TABLE + (2 * indexSwop)+1] = [FILE_TABLE + (2 * indexSwop)+1] - 1;
+		
+		if([FILE_TABLE + (2 * indexSwop)+1]==0)then
+			[FILE_TABLE + (2 * indexSwop)+0] = -1;
+		endif;
+		[currentPCB + (15 + 2* counter)+0] = -1;
+		[currentPCB + (15 + 2* counter)+1] = -1;
+				
+		counter = counter + 1;
+	endif;				
+endwhile;
+print "B7";
+SP = 3 * 512;
+physicalSP = ([PTBR + 2 * (SP / 512)] * 512) + (SP % 512);
+[physicalSP]=0;
+print "B8";
+ireturn;
+
+endif;
+

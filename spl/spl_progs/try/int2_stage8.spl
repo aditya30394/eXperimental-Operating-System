@@ -1,0 +1,167 @@
+alias physicalSP S0;
+alias sysCallNo S1;
+alias filename S2;
+alias index S3;
+alias fatcounter S4;
+alias swopcounter S5;
+alias swopindex S6; 
+alias simplecounter S10;
+
+physicalSP = ([PTBR + 2 * (SP / 512)] * 512) + (SP % 512);
+
+sysCallNo = [physicalSP - 1];
+
+filename = [physicalSP-3];//argument is fetched in register
+
+//THIS IS FOR OPEN
+
+if(sysCallNo==2) then
+	fatcounter = 0;
+	//CHECKING IF FILE IS PRESENT IN FAT or NOT
+
+	while(fatcounter!=64)do
+		if([FAT + (8*fatcounter)+0]==filename) then
+			index=fatcounter;
+			break;
+		endif;
+		fatcounter=fatcounter+1;
+	endwhile;
+
+	if(fatcounter==64)then
+		[physicalSP-2]=-1;
+		ireturn;
+	endif;
+//if file was open indeed then system wide open filetable will store the index. ACT accordingly
+
+swopcounter = 0;
+swopindex = -1;       
+//JUST FOR CHECKING LATER
+
+	while(swopcounter!=64)do
+		if([FILE_TABLE + (2*swopcounter)+0]==index)then
+			swopindex= swopcounter;
+			//not needed. swopcounter alone was enough
+			break;
+		endif;
+		if([FILE_TABLE + (2*swopcounter)+0]==-1)then
+			swopindex=swopcounter;
+			//not needed. swopcounter alone was enough
+			break;
+		endif;
+				
+		swopcounter=swopcounter+1;
+	endwhile;
+
+	if(swopcounter==64)then 
+		//if no free entry is present then return with -1 as 64 files are open already
+		[physicalSP-2]=-1;
+		ireturn;
+	endif;
+alias currentPID S7;
+currentPID = (PTBR - 1024) / 8;
+
+alias currentPCB S8;
+currentPCB = READY_LIST + 32 * currentPID;
+
+alias filecounter S9;						
+filecounter = 0;
+	while(filecounter!=8)do
+		if([currentPCB + (15 + (filecounter*2))]==-1)then
+			[currentPCB + (15 + (filecounter*2))] = swopindex;
+			[currentPCB + (15 + (filecounter*2))+1]=0;
+			//LSEEK is set to zero
+			break;
+			
+		endif;
+		filecounter=filecounter+1;
+	endwhile;
+
+	if(filecounter==8)then
+		[physicalSP-2]=-1;
+		ireturn;
+	else
+		//we sfount free entry in per process file table. Set up the System wide table properly now				
+		// now i undrstood that swopindex was not really needed. swop counter was enough
+		[FILE_TABLE + (2*swopindex)+0]= index;
+		//again this was not really required. fatcounter was enough
+		[FILE_TABLE + (2*swopcounter)+1]=[FILE_TABLE + (2*swopcounter)+1]+1;
+
+		[physicalSP-2]=filecounter;//this is filediscriptor
+		ireturn;
+		
+	endif;
+endif;
+
+//THIS IS FOR CLOSE
+
+alias filedescriptor S2;
+filedescriptor = [physicalSP-3];
+
+if(sysCallNo==3) then
+	simplecounter = 0;
+	while(simplecounter<8)do
+		if(filedescriptor == simplecounter)then
+			break;
+		else
+			simplecounter = simplecounter + 1;
+		endif;
+	endwhile;
+
+	if(simplecounter==8)then
+		[physicalSP-2]=-1;
+		ireturn;
+	endif;
+
+alias currentPID S7;
+currentPID = (PTBR - 1024) / 8;
+
+alias currentPCB S8;
+currentPCB = READY_LIST + (32 * currentPID);
+
+	if([currentPCB + (15 + 2* filedescriptor)]==-1)then
+		[physicalSP-2]=-1;
+		ireturn;
+	else
+		alias indexSwop S11;
+		indexSwop = [currentPCB + (15 + 2* filedescriptor)+0];
+			[FILE_TABLE + (2 * indexSwop)+1] = [FILE_TABLE + (2 * indexSwop)+1] - 1;
+		
+		if([FILE_TABLE + (2 * indexSwop)+1]==0)then
+			[FILE_TABLE + (2 * indexSwop)+0] = -1;
+		endif;
+			
+		[currentPCB + (15 + 2* filedescriptor)+0] = -1;
+		[currentPCB + (15 + 2* filedescriptor)+1] = -1;
+		[physicalSP-2]=0;
+		ireturn;
+
+	endif;
+endif;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

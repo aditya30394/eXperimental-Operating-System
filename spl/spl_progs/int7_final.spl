@@ -1,0 +1,189 @@
+alias physicalSP S0;
+alias sysCallNo S1;
+alias counter S2;
+alias currentPID S3;
+alias currentPCB S4;
+alias indexSwop S5;
+alias newPCB S6;
+alias i S7;
+alias newphysicalSP S8;
+counter=0;
+
+physicalSP = ([PTBR + 2 * (SP / 512)] * 512) + (SP % 512);
+
+sysCallNo = [physicalSP - 1];
+currentPID = (PTBR-1024)/8;
+currentPCB = READY_LIST + (32*currentPID);
+i=0;
+
+if(sysCallNo==10) then
+//STAGE 11 MODIFICATION
+	while(counter<32) do                                           //resuming all processes
+			if([READY_LIST+(32*counter)+1]==100+currentPID) then
+				[READY_LIST+32*counter+1]=1;
+			endif;
+			counter=counter+1;
+		endwhile;
+
+	counter=0;
+	newPCB=currentPCB;
+	while(counter<32 && [newPCB+1] !=1) do
+		if(newPCB==READY_LIST+32*31) then
+			newPCB=READY_LIST;
+		else
+			newPCB=newPCB+32;
+		endif;
+		counter=counter+1;
+	endwhile;
+
+        if(counter==32) then
+		halt;
+	endif;
+
+//CLOSE THE FILES NOW
+counter = 0;
+while(counter<8)do
+	if([currentPCB + 15 + (2* counter) + 0]==-1)then
+		[currentPCB + 15 + (2* counter) + 1] = -1;
+		counter = counter + 1;
+	else
+		indexSwop = [currentPCB + (15 + 2* counter)+0];
+		[FILE_TABLE + (2 * indexSwop)+1] = [FILE_TABLE + (2 * indexSwop)+1] - 1;
+		
+		if([FILE_TABLE + (2 * indexSwop)+1]==0)then
+			[FILE_TABLE + (2 * indexSwop)+0] = -1;
+		endif;
+		[currentPCB + (15 + 2* counter)+0] = -1;
+		[currentPCB + (15 + 2* counter)+1] = -1;
+				
+		counter = counter + 1;
+	endif;				
+endwhile;
+
+[currentPCB + 1] =0; //state = terminated
+
+//MODIFIED HERE NOW
+counter=0;	
+	while(counter<4) do                                                          // valid page of current process
+		if([PTBR+2*counter + 1]=="01" || [PTBR+2*counter + 1]== "11") then
+			[MEM_LIST+[PTBR+2*counter]]=[MEM_LIST+[PTBR+2*counter]]-1;
+		else
+			if([PTBR+2*counter]>447 && [PTBR+2*counter]<512) then                                //swap area block	
+				[DISK_LIST+[PTBR+2*counter]]=[DISK_LIST+[PTBR+2*counter]]-1;
+			endif;
+		endif;
+		[PTBR + 2*counter + 0] = -1;
+		[PTBR + 2*counter + 1] = "00";
+		counter=counter+1;
+	endwhile;
+	store(6,20);
+
+//SCHEDULER PRESENT BELOW
+endif;
+
+// WAIT AND SIGNAL STARTS FROM HERE ONWARDS
+alias waitingPID S9;
+
+
+if(sysCallNo==13) then
+	waitingPID=[physicalSP-3];
+	
+	if([READY_LIST + (32*waitingPID) + 1]==0 || [READY_LIST + (32*waitingPID) + 1]==2)then
+		[physicalSP-2]=-1;
+		ireturn;
+	endif;			
+	[currentPCB + 1] = 100+waitingPID;
+	[ currentPCB + 2 ] = BP;
+	[ currentPCB + 3 ] = SP - 1; 
+	[ currentPCB + 4 ] = [ physicalSP ];
+	[ currentPCB + 5 ] = PTBR;
+	[ currentPCB + 6 ] = PTLR ; 
+	[ currentPCB + 7 ] = R0; 
+	[ currentPCB + 8 ] = R1; 
+	[ currentPCB + 9 ] = R2; 
+	[ currentPCB + 10 ] = R3; 
+	[ currentPCB + 11 ] = R4; 
+	[ currentPCB + 12 ] = R5; 
+	[ currentPCB + 13 ] = R6; 
+	[ currentPCB + 14 ] = R7;
+
+counter=currentPCB+32;
+while(i<=32) do
+	if([counter+1]==1) then
+		newPCB=counter;
+		break;
+	endif;
+	if(counter==READY_LIST+32*31) then
+		counter=READY_LIST;
+	else
+		counter=counter+32;
+	endif;
+	i=i+1;	
+endwhile;
+
+//SCHEDULER IS BELOW
+		
+endif;
+
+if(sysCallNo == 10 || sysCallNo == 13) then
+	BP = [nextPCB + 2];
+	SP = [nextPCB + 3];
+	PTBR = [nextPCB + 5];
+	PTLR = [nextPCB + 6];
+	R0 = [nextPCB + 7];
+	R1 = [nextPCB + 8];	
+	R2 = [nextPCB + 9];	
+	R3 = [nextPCB + 10];
+	R4 = [nextPCB + 11];
+	R5 = [nextPCB + 12];
+	R6 = [nextPCB + 13];
+	R7 = [nextPCB + 14];
+	SP = SP + 1;
+	newphysicalSP = ([PTBR + 2 * (SP / 512)] * 512) + (SP % 512); 
+	[newphysicalSP] = [nextPCB + 4];          // IP field value of PCB on the stack 
+	[nextPCB + 1] = 2;
+endif;	
+
+
+
+if (sysCallNo==14 ) then
+	while(counter<32) do
+		if([READY_LIST+(32*counter)+1]==100+currentPID) then
+			[READY_LIST+(32*counter)+1]=1;
+		endif;
+		counter=counter+1;
+	endwhile;	
+
+
+endif;
+	[physicalSP-2]=0;
+	ireturn;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

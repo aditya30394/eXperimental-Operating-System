@@ -1,0 +1,151 @@
+alias physicalSP S0;
+alias sysCallNo S1;
+alias fileDes S2;
+alias newSeek S3;
+
+
+
+
+physicalSP = ([PTBR + 2 * (SP / 512)] * 512) + (SP % 512);
+
+sysCallNo = [physicalSP - 1];
+newSeek = [physicalSP-3];
+fileDes = [physicalSP-4];
+
+//THIS WAS SEEK
+
+if(sysCallNo == 6)then
+	if(fileDes<0 || fileDes>7)then
+		[physicalSP-2]=-1;
+		ireturn;
+	endif;
+alias currentPID S4;
+
+currentPID = (PTBR-1024)/8;
+alias currentPCB S5;
+currentPCB = READY_LIST + (32*currentPID);
+
+	if([currentPCB + (15 + (2*fileDes))]==-1)then
+		[physicalSP-2]=-1;
+		ireturn;
+	endif;
+
+alias ptrToSWOP S6;
+alias lseek S7;	
+
+ptrToSWOP = [currentPCB + (15 + (2*fileDes)) + 0];
+lseek = [currentPCB + (15 + (2*fileDes)) + 1];
+
+alias fatIndex S8;
+
+fatIndex = [FILE_TABLE + (2*ptrToSWOP) + 0];
+
+alias fileSize S9;
+
+fileSize = [FAT + (8*fatIndex) + 1];
+	
+	if(newSeek<0 || newSeek>fileSize)then
+		[physicalSP-2]=-1;
+		ireturn;
+	endif;
+
+	[currentPCB + (15 + (2*fileDes)) + 1] = newSeek;
+	[physicalSP-2] = 0;
+	ireturn;
+
+endif;
+
+//READ STARTS HERE
+
+alias wordRead S3;
+wordRead = [physicalSP-3];
+
+if(sysCallNo==7)then
+	if(fileDes<0 || fileDes>7)then
+		[physicalSP-2]=-1;
+		ireturn;
+	endif;
+alias currentPID S4;
+
+currentPID = (PTBR-1024)/8;
+alias currentPCB S5;
+currentPCB = READY_LIST + (32*currentPID);
+
+	if([currentPCB + (15 + (2*fileDes))]==-1)then
+		[physicalSP-2]=-1;
+		ireturn;
+	endif;
+
+alias ptrToSWOP S6;
+alias lseek S7;	
+
+ptrToSWOP = [currentPCB + (15 + (2*fileDes)) + 0];
+lseek = [currentPCB + (15 + (2*fileDes)) + 1];
+
+alias fatIndex S8;
+
+fatIndex = [FILE_TABLE + (2*ptrToSWOP) + 0];
+
+alias basicBlock S9;
+alias fileSize S10;
+
+
+basicBlock = [FAT + (8*fatIndex)+2];
+fileSize = [FAT + (8*fatIndex)+1];
+load(1,basicBlock);
+
+	if(lseek == fileSize)then
+		[physicalSP-2]=-1;
+		ireturn;
+	endif;		
+
+alias basicIndex S11;
+
+basicIndex = lseek/512;
+
+load(1,[512+basicIndex]);
+wordRead = [512 + (lseek%512)];
+[physicalSP-3]=wordRead;
+
+	[currentPCB + (15 + (2*fileDes)) + 1] = [currentPCB + (15 + (2*fileDes)) + 1] + 1;
+	[physicalSP-2]=0;
+	ireturn;
+
+
+
+
+endif;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

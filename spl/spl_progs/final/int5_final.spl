@@ -1,0 +1,236 @@
+alias pcb_counter S0;
+alias child_pid S1;
+alias physical_sp S2;
+alias count S3;
+count=0;
+alias Counter S4;
+Counter=0;
+alias memory_page S5;
+alias PTBR_child S6;
+alias Flag S7;
+alias valid_page S8;
+alias child_pcb S9;
+alias parent_pid S10;
+parent_pid=(PTBR-1024)/8;
+alias parent_pcb S11;
+alias system_wide_index S12;
+alias child_physical_sp S13;
+alias Process_PTBR S14;
+
+
+physical_sp=([PTBR+2*(SP/512)]*512)+SP%512;
+
+
+pcb_counter=READY_LIST;
+
+
+
+// cheack for free pcb
+
+while(pcb_counter < READY_LIST+1024)do
+	if([pcb_counter+1]==0)then
+		break;
+	endif;
+	pcb_counter=pcb_counter+32;
+endwhile;
+
+if(pcb_counter >= (READY_LIST+1024))then
+	[physical_sp-2]=-1;
+	ireturn;
+endif;
+
+
+child_pid=(pcb_counter-READY_LIST)/32;
+
+
+
+
+
+memory_page=0;
+
+//cheack for free memory_page
+
+while(memory_page < 64)do
+	if([1280+memory_page]==0)then
+		break;
+	endif;
+	memory_page=memory_page+1;
+endwhile;
+
+//--------------------------
+if(memory_page == 64)then
+	
+
+Flag=0;
+Counter = parent_pid+1;                     
+
+while(Counter <= 32) do
+  
+  if(Counter == 32) then
+    Counter = 0;
+  endif;  
+  
+ // CurrentPCB = READY_LIST + 32 * Counter;
+  
+  count = 0;
+  
+  Process_PTBR = 8 * Counter + 1024;
+  
+  while(count < 6) do
+  
+    if([Process_PTBR + count + 1] == "11") then
+      memory_page = [Process_PTBR + count];
+      
+      if([1280 + memory_page] == 1) then
+        [Process_PTBR + count + 1] = "01";
+      endif;
+      
+    else
+      if([Process_PTBR + count + 1] == "01") then
+        memory_page = [Process_PTBR + count];
+         
+        if([1280 + memory_page] == 1) then
+          Flag = 1;
+          break;
+        endif;
+      endif;
+    endif;
+    
+	
+   count  = count + 2;
+   endwhile;
+   
+   if(Flag == 1) then
+	break;
+   endif;
+   
+   Counter = Counter + 1;
+ endwhile;
+ 
+Counter = 3072 + 448;
+ 
+while(Counter < 3072 + 512) do
+  if([Counter] == 0) then
+    break;
+  endif;
+   
+  Counter = Counter + 1;
+endwhile;
+ 
+if(Counter >= 3072 + 512) then
+  [physical_sp-2]=-1;
+	ireturn;
+endif;
+ 
+  Counter = Counter - 3072;
+  
+store(memory_page,Counter);
+               
+[3072 + Counter] = 1;
+//---------------
+store(6,20);
+
+[Process_PTBR + count] = Counter;
+[Process_PTBR + count + 1] = "00";
+
+endif;
+
+
+//-------------step4	
+
+PTBR_child=1024+child_pid*8;
+
+
+//set stack for child
+[PTBR_child+6]=memory_page;
+[PTBR_child+7]="01";
+
+//allocate memory_page
+[1280+memory_page]=1;
+
+//copy stack
+
+
+valid_page=[PTBR+6];
+count=0;
+
+while(count < 512)do
+	[memory_page*512+count]=[valid_page*512+count];
+	count=count+1;
+endwhile;
+
+count=0;
+while(count < 3)do
+	[PTBR_child+count*2]=[PTBR+count*2];
+	[PTBR_child+count*2+1]=[PTBR+count*2+1];
+
+	if(([PTBR_child+count*2+1]=="01")||([PTBR_child+count*2+1]=="11"))then
+		memory_page=[PTBR_child+2*count];
+		[1280+memory_page]=[1280+memory_page]+1;
+	endif;
+
+	if((([PTBR_child+count*2+1]=="00")||([PTBR_child+count*2+1]=="10"))&&([PTBR_child+count*2]>=448))then
+		[512*6+[PTBR_child+count*2]]=[512*6+[PTBR_child+count*2]]+1;
+	endif;
+
+	count=count+1;
+endwhile;
+
+//store back disk free list
+store(6,20);
+
+
+//print("k");
+//------------ step 4
+
+child_pcb=READY_LIST+32*child_pid;
+[child_pcb+6]=PTLR;
+[child_pcb+5]=PTBR_child;
+[child_pcb+4]=[physical_sp];  // set ip
+[child_pcb+3]=SP-1;
+[child_pcb+2]=BP;
+[child_pcb+7]=R0;
+[child_pcb+8]=R1;
+[child_pcb+9]=R2;
+[child_pcb+10]=R3;
+[child_pcb+11]=R4;
+[child_pcb+12]=R5;
+[child_pcb+13]=R6;
+[child_pcb+14]=R7;
+
+
+
+
+
+
+parent_pcb=READY_LIST+32*parent_pid;
+
+count=0;
+
+
+while(count < 8)do
+	[child_pcb+15+2*count]=[parent_pcb+15+2*count];
+	[child_pcb+15+2*count+1]=[parent_pcb+15+2*count+1];	
+	system_wide_index=[parent_pcb+15+2*count];
+	if(system_wide_index > -1)then
+		[FILE_TABLE+2*system_wide_index+1]=[FILE_TABLE+2*system_wide_index+1]+1; //increasing count;
+	endif;
+	count=count+1;
+endwhile;
+
+[child_pcb+31]=parent_pid;  //for get ppid
+
+[child_pcb+1]=1;
+[child_pcb]=child_pid;
+
+[physical_sp-2]=child_pid;
+//print(child_pid);
+
+
+
+child_physical_sp=([PTBR_child+2*((SP-1)/512)] *512)+(SP-1)%512;
+
+[child_physical_sp-1]=-2;
+
+ireturn;
+

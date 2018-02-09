@@ -1,0 +1,145 @@
+alias physicalSP S0;
+alias sysCallNo S1;
+alias freePCB S2;
+alias validPage S3;
+alias counter S4;
+alias freeMemBlocks S5;
+alias validEntrySet S6;
+alias parentPID S7;
+alias childPTBR S8;
+alias innerCounter S9;
+alias wordCount S10;
+alias childPCB S11;
+alias parentPCB S12;
+alias childPhysicalSP S13;
+
+parentPID = (PTBR-1024)/8;
+parentPCB = READY_LIST + (32*parentPID);
+//freePCB is childPID
+
+physicalSP = ([PTBR + 2 * (SP / 512)] * 512) + (SP % 512);
+
+sysCallNo = [physicalSP - 1];
+
+if(sysCallNo==8) then
+freePCB = 0;
+//search readylist for space
+
+while(freePCB<32)do
+	if([READY_LIST + (32*freePCB) + 1]==0)then
+		break;
+	else
+		freePCB = freePCB+1;
+	endif;
+endwhile;
+
+if(freePCB==32)then
+	[physicalSP-2]=-1;
+	ireturn;
+endif;
+print "B1";
+
+childPTBR = 1024 + (8*freePCB);
+childPCB = READY_LIST + (32*freePCB);
+
+[childPCB + 0]=freePCB;
+
+//The page table of the parent process is checked to count the number of valid pages.
+// The memory free list is checked to find an equal number of free pages. If there is 
+//not enough free pages in the memory free list, return from the system call with return value -1, indicating failure. 
+validPage = 0;
+counter = 0;
+
+while(counter<4)do
+	if([PTBR + (2*counter)+1]==01||[PTBR + (2*counter)+1]==11)then
+		validPage=validPage+1;
+	endif;
+	counter=counter+1;
+endwhile;
+counter = 29;
+freeMemBlocks=0;
+while(counter<64)do
+	if([MEM_LIST + counter]==0)then
+		freeMemBlocks = freeMemBlocks + 1;
+	endif;
+	counter = counter + 1;
+endwhile;
+
+if(validPage>freeMemBlocks)then
+	[physicalSP-2]=-1;
+	ireturn;
+endif;
+print "B2";
+
+counter =0;
+
+//set the required pages in memList to 1 now and also set the value of [childPTBR + (2*counter) + 0] field
+counter = 0;
+
+while(counter<4)do
+	//([PTBR + (2*counter)+1]==00 || [PTBR + (2*counter)+1]==10)
+	if([PTBR + (2*counter)+0]==-1)then
+		[childPTBR + (2*counter) + 0]=[PTBR + (2*counter)+0];
+		[childPTBR + (2*counter) + 1]=[PTBR + (2*counter)+1];
+		counter = counter + 1;
+	else
+		innerCounter=25;			
+		while([MEM_LIST + innerCounter]!=0)do
+			innerCounter=innerCounter+1;
+			
+		endwhile;
+		[MEM_LIST + innerCounter]=1; 
+		[childPTBR + (2*counter) + 1]=[PTBR + (2*counter)+1];
+		[childPTBR + (2*counter) + 0]=innerCounter;
+		wordCount = 0;
+		while(wordCount<512)do
+			[(512*innerCounter)+wordCount] = [512*[PTBR + (2*counter)+0]+wordCount];
+			wordCount=wordCount+1;
+		endwhile;
+		counter = counter + 1;
+	endif;
+endwhile;
+print "B3";
+	[childPCB + 0]=freePCB;
+	[childPCB + 1]=1;	
+	[childPCB + 2]=BP;
+	[childPCB + 3]=SP-1;
+	[childPCB + 4]=[physicalSP];
+	[childPCB + 5]=childPTBR;
+	[childPCB + 6]=PTLR;
+	[childPCB + 7]=R0;
+	[childPCB + 8]=R1;
+	[childPCB + 9]=R2;
+	[childPCB + 10]=R3;
+	[childPCB + 11]=R4;
+	[childPCB + 12]=R5;
+	[childPCB + 13]=R6;
+	[childPCB + 14]=R7;
+	[childPCB + 31]=parentPID;
+
+counter = 0;
+while(counter<8)do
+	[childPCB + 15 + (2*counter)+0]=[parentPCB + 15 + (2*counter)+0];	
+	[childPCB + 15 + (2*counter)+1]=[parentPCB + 15 + (2*counter)+1];
+	counter = counter + 1;
+endwhile;
+print "B4";
+counter = 0;
+	while(counter<8) do
+		if([childPCB + 15 + 2*counter] != -1) then    //valid entry SWOP index
+			[FILE_TABLE + ([childPCB + 15 + (counter*2)]*2) + 1]=[FILE_TABLE + ([childPCB + 15 + (counter*2)]*2) + 1] + 1;
+		endif;
+		counter=counter+1;
+	endwhile;
+
+	
+	[physicalSP-2]=freePCB;
+
+	childPhysicalSP=([childPTBR + ((SP-1)/512)*2]*512) + ((SP-1) % 512);
+	[childPhysicalSP-1]=-2;
+	print "B5";	
+//STAGE 11 MODIFICATION
+	
+	ireturn;
+
+endif;

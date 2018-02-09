@@ -1,0 +1,92 @@
+alias physicalSP S0;
+alias sysCallNo S1;
+alias currentPID S2;
+alias currentPCB S3;
+alias nextProcess S4;
+alias i S5;
+alias SWOFTindex S6;
+alias nextPCB S7;
+alias newphysicalSP S8;
+
+
+physicalSP = [PTBR + 2*SP/512]*512 + SP%512;
+sysCallNo = [physicalSP - 1];
+
+if(sysCallNo == 10) then
+	nextProcess = 0;
+	while(nextProcess < 32 && [READY_LIST + nextProcess*32 + 1] != 1) do
+		nextProcess = nextProcess + 1;
+	endwhile;
+
+	if(nextProcess == 32) then
+		halt;
+	else
+		currentPID = (PTBR-1024)/8;
+		currentPCB = READY_LIST + currentPID*32;
+
+		// 6. Close files opened by current process
+	
+	i = 0;
+	while(i<8) do
+		SWOFTindex = [currentPCB + 15 + i*2];
+		if ( SWOFTindex != -1) then 
+			[FILE_TABLE + SWOFTindex*2 + 1] = [FILE_TABLE + SWOFTindex*2 + 1] - 1;
+			if ([FILE_TABLE + SWOFTindex*2 + 1] == 0) then
+				[FILE_TABLE + SWOFTindex*2] = -1;			// Invalidate the entry if count becomes 0	
+			endif;
+			
+			//Invalidate the PPOFT entries
+			[currentPCB + 15 + i*2 + 0] = -1;			
+			[currentPCB + 15 + i*2 + 1] = -1;
+		endif;
+		i = i + 1;
+	endwhile;
+
+		[currentPCB + 1] = 0;
+		
+		i = 0;
+		while(i<4) do
+			if([PTBR + i*2 + 1]=="01" || [PTBR + i*2 + 1]=="11") then
+				[MEM_LIST + [PTBR + i*2]] = 0;
+			endif;
+			[PTBR + i*2] = -1;
+			[PTBR + i*2] = "00";
+			i = i + 1;
+		endwhile;
+
+		nextProcess = 0;
+		nextPCB = currentPCB + 32;
+		while(nextProcess <= 32) do
+			if([nextPCB + 1] == 1 ) then
+				break;
+			endif;
+			
+			if(nextPCB == READY_LIST + 32*31) then
+				nextPCB = READY_LIST;
+			endif;
+
+			nextProcess = nextProcess + 1;
+			nextPCB = nextPCB + 32;
+		endwhile; 
+
+		BP = [nextPCB + 2];
+		SP = [nextPCB + 3];
+
+		PTBR = [nextPCB + 5];
+		PTLR = [nextPCB + 6];
+		R0 = [nextPCB + 7];
+		R1 = [nextPCB + 8];	
+		R2 = [nextPCB + 9];	
+		R3 = [nextPCB + 10];
+		R4 = [nextPCB + 11];
+		R5 = [nextPCB + 12];
+		R6 = [nextPCB + 13];
+		R7 = [nextPCB + 14];
+		SP = SP + 1;
+
+		newphysicalSP = ([PTBR + 2 * (SP / 512)] * 512) + (SP % 512); 
+		[newphysicalSP] = [nextPCB + 4];          // IP field value of PCB on the stack 
+		[nextPCB + 1] = 2;
+		ireturn;
+endif;
+endif;

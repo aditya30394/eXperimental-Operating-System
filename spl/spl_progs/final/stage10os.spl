@@ -1,0 +1,113 @@
+//load timer interrupt and exception handler
+
+load(7,1);
+load(8,2);
+load(9,3);
+load(10,4);
+
+//load int 1 2 3 4 5 6 7
+
+load(11,5);
+load(12,6);
+load(13,7);
+load(14,8);
+load(15,9);
+load(16,10);
+load(17,11);
+load(18,12);
+load(19,13);
+load(20,14);
+load(21,15);
+load(22,16);
+load(23,17);
+load(24,18);
+
+//load FAT and disk free list
+load (5,19);
+load(6,20);
+
+alias swop S0; //system-wide open file table == (FAT index + counts)
+swop=0;
+while(swop!=64) do
+	[FILE_TABLE + (2*swop) + 0]=-1;
+	[FILE_TABLE + (2*swop) + 1]=0;
+	swop = swop + 1;
+endwhile;
+
+alias counter S1;
+
+counter =15;
+while(counter!=31) do
+	[READY_LIST + counter] = -1;
+	counter=counter + 1;
+endwhile;
+
+counter = 0;
+//25 is stack for init process
+
+while(counter<26)do
+	[MEM_LIST+counter]=1;
+	counter=counter+1;
+endwhile;
+
+counter = 26;
+
+while(counter<64)do
+	[MEM_LIST+counter]=0;
+	counter=counter+1;
+endwhile;
+
+// Setting state of PCB to 0
+counter=1;
+while(counter<32) do
+	[READY_LIST + (32*counter) + 1]=0;
+	counter=counter+1;
+endwhile;
+
+counter=448;                                                   //clearing the swap area of DISK
+while(counter<512) do
+	[DISK_LIST+counter]=0;
+	counter=counter+1;
+endwhile;
+//commit the changes
+store(6,20);
+
+
+//SET UP THE INIT PROCESS NOW
+
+[READY_LIST + 0]=0;//Set the pid as 0
+[READY_LIST + 1]=2;//state as running
+
+PTBR = 1024;
+PTLR=4;
+[PTBR + 0] = 21; // disk code block Number for Logical Page 0
+[PTBR + 1] = "00"; // Auxiliary Information for Logical Page 0
+[PTBR + 2] = 22; // disk code block Number for Logical Page 1
+[PTBR + 3] = "00"; // Auxiliary Information for Logical Page 1
+[PTBR + 4] = 23; //  disk code block Number for Logical Page 2
+[PTBR + 5] = "00"; // Auxiliary Information for Logical Page 2	
+
+[PTBR + 6] = 25; // Physical Page Number for Logical Page 3 (Stack) 
+[PTBR + 7] = "01"; // Auxiliary Information for Logical Page 3 (Stack)
+SP = 3 * 512;
+[25 * 512] = 0; // Set up the IP value for INIT in the stack 
+BP=SP;
+
+[READY_LIST + 31]=0;
+
+ireturn;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

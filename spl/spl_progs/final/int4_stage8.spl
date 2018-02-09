@@ -1,0 +1,107 @@
+alias physicalSP S0;
+alias sysCallNo S1;
+alias fileDes S2;
+alias wordToWrite S3;
+
+
+
+
+physicalSP = ([PTBR + 2 * (SP / 512)] * 512) + (SP % 512);
+
+sysCallNo = [physicalSP - 1];
+wordToWrite = [physicalSP-3];
+fileDes = [physicalSP-4];
+
+
+if(sysCallNo==5)then
+
+	if(fileDes<0 || fileDes>7)then // THIS IS DONE WITHOUT LOOPING. REMEMBER THIS
+		[physicalSP-2]=-1;
+		ireturn;
+	endif;
+alias currentPID S4;
+
+currentPID = (PTBR-1024)/8;
+alias currentPCB S5;
+currentPCB = READY_LIST + (32*currentPID);
+
+	if([currentPCB + (15 + (2*fileDes))]==-1)then
+		[physicalSP-2]=-1;
+		ireturn;
+	endif;
+
+alias ptrToSWOP S6;
+alias lseek S7;	
+
+ptrToSWOP = [currentPCB + (15 + (2*fileDes)) + 0];
+lseek = [currentPCB + (15 + (2*fileDes)) + 1];
+
+alias fatIndex S8;
+
+fatIndex = [FILE_TABLE + (2*ptrToSWOP) + 0];
+
+alias basicBlock S9;
+
+basicBlock = [FAT + (8*fatIndex)+2];
+load(1,basicBlock);
+alias basicIndex S10;
+
+basicIndex = lseek/512;
+alias counter S11;
+counter = 24;
+alias check S13;
+	
+if(basicIndex >= 256)then
+	[physicalSP-2]=-1;
+	ireturn;
+endif;		
+
+if([512 + basicIndex]==-1)then //NO Valid entry. 
+	//allocate a new block
+	check = 0;
+	while([512+check]!=-1)do
+		check = check + 1;
+	endwhile;
+
+		if(check>256)then
+			[physicalSP-2]=-1;
+			ireturn;
+		endif;
+	
+	while(counter!=448)do
+		if([DISK_LIST + counter]==0)then
+			break;
+		endif;
+		counter=counter+1;
+	endwhile;
+
+	if(counter==448)then
+		[physicalSP-2]=-1;
+		ireturn;
+	endif;
+
+
+	[DISK_LIST + counter]=1;
+	[512 + basicIndex]=counter;
+	store(1,basicBlock);
+	[FAT + (8 * fatIndex) + 1] = [FAT + (8 * fatIndex) + 1] + 512;
+	store(5,19);
+	store(6,20);
+endif;
+	//counter is freeblock
+
+	counter = [512 + basicIndex]; //VERY SMART CODING. REMEMBER this use. Basically we saved the counter value at this location.
+
+
+	load(1,counter);
+	//offset = lseek%512
+	[512 + (lseek%512)]= wordToWrite;
+	store(1,counter);
+
+	[currentPCB + (15 + (2*fileDes)) + 1] = [currentPCB + (15 + (2*fileDes)) + 1] + 1;
+	[physicalSP-2]=0;
+	ireturn;
+
+
+endif;
+

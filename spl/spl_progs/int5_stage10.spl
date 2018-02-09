@@ -1,0 +1,120 @@
+alias physicalSP S0;
+alias sysCallNo S1;
+alias childPID S2;
+alias counter S3;
+alias freeMemBlocks S4;
+alias parentPID S5;
+alias childPTBR S6;
+alias wordCount S7;
+alias childPCB S8;
+alias parentPCB S9;
+alias childPhysicalSP S10;
+
+parentPID = (PTBR-1024)/8;
+parentPCB = READY_LIST + (32*parentPID);
+
+physicalSP = ([PTBR + 2 * (SP / 512)] * 512) + (SP % 512);
+
+sysCallNo = [physicalSP - 1];
+if(sysCallNo==8) then
+
+childPID = 0;
+//search readylist for space
+
+while(childPID<32)do
+	if([READY_LIST + (32*childPID) + 1]==0)then
+		break;
+	else
+		childPID = childPID+1;
+	endif;
+endwhile;
+
+if(childPID==32)then
+	[physicalSP-2]=-1;
+	ireturn;
+endif;
+
+childPTBR = 1024 + (8*childPID);
+childPCB = READY_LIST + (32*childPID);
+
+[childPCB + 0]=childPID;
+
+// REAL MODIFICATION STARTS HERE
+// search memory for 1 free block for the stack of child
+
+counter=0;
+while((counter<64)&&([MEM_LIST + counter]!=0))do
+	counter=counter+1;
+endwhile;
+
+if(counter==64)then
+	[physicalSP-2]=-1;
+	ireturn;
+endif;
+	
+[MEM_LIST + counter]=1; //set this as used now
+
+// copy the stack contents now
+
+wordCount=0;
+while(wordCount<512)do
+	[(counter*512) + wordCount]=[([PTBR + (3*2) + 0]*512)+ wordCount];
+	wordCount=wordCount+1;
+endwhile;
+
+[childPTBR+(3*2)+0]=counter;
+[childPTBR+(3*2)+1]="01";	
+
+counter=0;
+while(counter<3) do                                           //copying parent page_table to child page_table
+	[childPTBR + (2*counter) + 0]=[PTBR + (2*counter) + 0];
+	[childPTBR + (2*counter) + 1]=[PTBR + (2*counter) + 1];
+	if([childPTBR + (2*counter) + 1]=="01" || [childPTBR + (2*counter) + 1]=="11") then
+		[MEM_LIST+[childPTBR + (2*counter) + 0]]=[MEM_LIST+[childPTBR + (2*counter) + 0]]+1;
+	else
+		if([childPTBR + (2*counter) + 0]>=448) then
+			[DISK_LIST+[childPTBR + (2*counter) + 0]]=[DISK_LIST+[childPTBR + (2*counter) + 0]]+1;
+		endif;
+	endif;
+	counter=counter+1;
+endwhile;
+store(6,20);
+
+	[childPCB + 0]=childPID;
+	[childPCB + 1]=1;	
+	[childPCB + 2]=BP;
+	[childPCB + 3]=SP-1;
+	[childPCB + 4]=[physicalSP];
+	[childPCB + 5]=childPTBR;
+	[childPCB + 6]=PTLR;
+	[childPCB + 7]=R0;
+	[childPCB + 8]=R1;
+	[childPCB + 9]=R2;
+	[childPCB + 10]=R3;
+	[childPCB + 11]=R4;
+	[childPCB + 12]=R5;
+	[childPCB + 13]=R6;
+	[childPCB + 14]=R7;
+	[childPCB + 31]=parentPID;
+
+counter = 0;
+while(counter<8)do
+	[childPCB + 15 + (2*counter)+0]=[parentPCB + 15 + (2*counter)+0];	
+	[childPCB + 15 + (2*counter)+1]=[parentPCB + 15 + (2*counter)+1];
+	counter = counter + 1;
+endwhile;
+
+counter = 0;
+	while(counter<8) do
+		if([childPCB + 15 + 2*counter] != -1) then    //valid entry SWOP index
+			[FILE_TABLE + ([childPCB + 15 + (counter*2)]*2) + 1]=[FILE_TABLE + ([childPCB + 15 + (counter*2)]*2) + 1] + 1;
+		endif;
+		counter=counter+1;
+	endwhile;
+	[physicalSP-2]=childPID;
+	childPhysicalSP=([childPTBR + ((SP-1)/512)*2]*512) + ((SP-1) % 512);
+	[childPhysicalSP-1]=-2;
+	ireturn;
+endif;
+
+

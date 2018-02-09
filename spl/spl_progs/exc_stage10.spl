@@ -1,0 +1,113 @@
+alias cause S0;
+alias VPagenum S1;
+alias Ip_addr S2;
+alias counter S3;
+alias freePage S4;
+alias j S5;
+alias nextPTBR S6;
+alias i S7;
+alias phyPageNo S8;
+alias count S9;
+alias physicalSP S10;
+count=0;
+cause = EFR % 10;		// Gets value of cause field (size 1 char)
+VPagenum = (EFR / 10) % 100;    // Gets value of BadVAddr 
+Ip_addr = (EFR/1000);		//Gets value of IP at the point of exception
+
+if(cause!=0) then
+	if(cause==1) then
+		print("Ill inst");
+	endif;
+
+	if(cause==2) then
+		print("Ill my access");
+	endif;
+
+	if(cause==3) then
+		print("Arith except");
+	endif;
+
+	if(cause==4) then
+		print("Ill operands");
+	endif;
+	inline "JMP 11776";
+endif;
+
+if(cause==0) then
+	if([PTBR + (2*VPagenum) + 0]==-1) then
+		print("ill address");
+		inline "JMP 11776";
+	endif;
+
+	counter=0;
+	while(counter<64 && [MEM_LIST+counter]!=0) do
+		counter=counter+1;
+	endwhile;
+freePage=counter;	
+	if(counter<64) then
+			[MEM_LIST+counter]=[MEM_LIST+counter]+1;
+	else	//SECOND CHANCE ALGORITHM TO FIND FREE MEM BLOCK
+		// NOTE SWAP SPACE IS 64 as well. So count can go upto 127 at max
+		j=VPagenum;
+		nextPTBR=PTBR;
+
+		while(count<128) do
+			if(j != 3) then
+				if([nextPTBR+j*2+1]=="11") then
+					[nextPTBR+j*2+1]="01";
+				endif;
+				if([nextPTBR+j*2+1]=="01") then
+					if([[nextPTBR+j*2]+MEM_LIST]<2) then
+						i=448;
+						while(i<512 && [DISK_LIST+i]!=0) do
+							i=i+1;
+						endwhile;
+						
+						if(i==512) then
+							inline "JMP 11776";
+						endif;
+						
+						store([nextPTBR+j*2],i);//store victim page in swap area
+						[[nextPTBR+j*2]+MEM_LIST]=0;//memory is freed
+						[DISK_LIST+i]=[DISK_LIST+i]+1;//disk is update
+						freePage=[nextPTBR+j*2];//free page entry for victim page is noted
+						[nextPTBR+j*2]=i;
+						[nextPTBR+j*2+1]="00";
+						break;
+					endif;
+				endif;
+				count=count+1;//swaping area checker
+				j=j+1;//page table index basically
+			else
+				count=count+1;
+				j=0;
+				if(nextPTBR==1272) then
+					nextPTBR=PAGE_TABLE;
+				else
+				        nextPTBR=nextPTBR+8;
+				endif;
+
+				endif;
+		endwhile;
+
+
+	endif;
+//GOT THE FREE PAGE NOW
+[MEM_LIST+freePage]=1;
+phyPageNo=[PTBR+VPagenum*2];
+	if(phyPageNo<448 && phyPageNo>20) then
+		load(freePage,phyPageNo);
+	endif;
+	
+	if(phyPageNo>447 && phyPageNo<512) then
+		load(freePage,phyPageNo);
+		[DISK_LIST+phyPageNo]=[DISK_LIST+phyPageNo]-1;
+	endif;
+	[PTBR+VPagenum*2]=freePage;
+	[PTBR+VPagenum*2+1]="11";
+	
+	SP=SP+1;
+	physicalSP = ([PTBR + 2 * (SP / 512)] * 512) + (SP % 512);
+	[physicalSP]=Ip_addr;
+	ireturn;	
+endif;

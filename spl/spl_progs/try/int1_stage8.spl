@@ -1,0 +1,186 @@
+alias physicalSP S0;
+alias sysCallNo S1;
+alias filename S2;
+alias counter S3;
+alias fatct S4;
+alias counterBasic S5;
+
+
+
+physicalSP = ([PTBR + 2 * (SP / 512)] * 512) + (SP % 512);
+
+sysCallNo = [physicalSP - 1];
+
+filename = [physicalSP-3];//argument is fetched in register
+
+if(sysCallNo==1) then
+	counter = 24;
+	//s6 = diskfree list
+	S6 = 6*512;
+	S6 = S6 + counter;
+	while([S6]!=0)do
+		counter = counter + 1;
+		S6 = S6 + 1;
+		if(counter==448)then
+			break;
+		endif;
+	endwhile;
+	if(counter==448)then
+		[physicalSP-2]=-1;
+		ireturn;
+	endif;
+//need to check FAT for the filename
+fatct=0;
+while(fatct!=64)do
+	if([FAT+(8*fatct)]==filename)then
+		[physicalSP-2]=0;
+		ireturn;
+	endif;
+
+	if([FAT+(8*fatct)+2]==-1)then
+		break;
+	endif;
+	
+	fatct=fatct+1;
+
+endwhile;
+	if(fatct==64)then
+		[physicalSP-2]=-1;
+		ireturn;
+	endif;			
+	
+[FAT+(8*fatct)] = filename;
+[FAT+(8*fatct)+1]=0;
+[FAT+(8*fatct)+2]=counter;
+load(1,counter);
+counterBasic=0;
+		while(counterBasic<512 ) do
+		   		      [512+counterBasic]=-1;
+				      counterBasic=counterBasic+1;
+
+		endwhile;
+store(1,counter);
+[DISK_LIST+counter]=1;
+store(5,19);
+store(6,20);
+[physicalSP -2]=0;
+ireturn;
+
+
+endif;
+
+physicalSP = ([PTBR + 2 * (SP / 512)] * 512) + (SP % 512);
+
+sysCallNo = [physicalSP - 1];
+
+filename = [physicalSP-3];//argument is fetched in register
+fatct = 0;
+
+
+
+// DELETE SYSYTEM CALL FROM HERE
+if(sysCallNo==4) then
+	fatct = 0;
+	while(fatct!=64)do
+		if([FAT + (8*fatct)]==filename)then
+			break;
+		endif;
+		fatct=fatct+1;
+	endwhile;
+	
+	if(fatct==64)then
+		[physicalSP-2]=-1;
+		ireturn;
+	endif;
+alias swop S8;
+swop = 0;
+	while(swop!=64)do
+		if([FILE_TABLE + (2*swop) + 0]==fatct)then
+			[physicalSP-2]=-1;
+			ireturn;
+		endif;			
+		swop = swop + 1;
+	endwhile;
+alias basicblock S9;
+basicblock = [FAT + (8*fatct) + 2];
+
+//LOAD BASIC BLOCK TO SCRATCHPAD
+
+load(1,basicblock);
+alias i S10;
+alias j S11;
+alias dataBlock S12;
+i=0;
+j=0;
+
+	while(i<256)do
+		load(1,basicblock);
+		dataBlock = [512 + i];
+		if(dataBlock==-1)then
+			break;
+		endif;
+		load(1,dataBlock);
+		while(j<512)do
+			[512+j]="";
+			j=j+1; 		
+		endwhile;
+		j = 0;
+		store(1,dataBlock);
+		[DISK_LIST+dataBlock]=0;
+		i=i+1;
+	endwhile;
+	load(1,basicblock);
+	j=0;
+	while(j<512)do
+		[512+j]="";
+		j=j+1;
+	endwhile;
+	[DISK_LIST+basicblock]=0;
+	
+	store(1,basicblock);
+	[FAT + (8*fatct) + 1] = 0;
+	[FAT + (8*fatct) + 0]= -1;
+	[FAT + (8*fatct) + 2]= -1;
+	store(5,19);
+	store(6,20);
+	[physicalSP-2]=0;
+	ireturn;
+endif;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
