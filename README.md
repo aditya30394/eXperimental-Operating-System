@@ -2,7 +2,7 @@
 This is a platform for building a simple operating system upon a simulated machine hardware. Various components have been provided in this development package. 
 
 For instructions and detailed documentation, visit
-http://xosnitc.github.com/
+https://xosnitc.github.io/
 
 
 ## Components
